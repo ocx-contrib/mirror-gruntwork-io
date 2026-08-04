@@ -60,17 +60,6 @@ terragrunt hcl fmt                # canonicalise every .hcl file
 terragrunt run --all plan         # plan every unit in dependency order
 ```
 
-## Install with ocx
-
-```sh
-ocx install ocx.sh/gruntwork-io/terragrunt
-```
-
-```sh
-# or pin a specific version
-ocx install ocx.sh/gruntwork-io/terragrunt:1.1.2
-```
-
 ## Links
 
 - [terragrunt on GitHub](https://github.com/gruntwork-io/terragrunt)
