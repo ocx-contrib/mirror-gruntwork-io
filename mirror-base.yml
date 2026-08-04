@@ -125,9 +125,9 @@ platforms:
   # ── Pass 3 (windows) ───────────────────────────────────────────────────────
   # windows/amd64 only. Upstream ships NO windows/arm64 build at any in-range
   # release — see the exclusion note in terragrunt/mirror.yml.
-  # windows/amd64:
-  #   runner: windows-latest
-  #   shell: pwsh
+  windows/amd64:
+    runner: windows-latest
+    shell: pwsh
 
 notify:
   discord:

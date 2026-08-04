@@ -139,8 +139,17 @@ assets:
     - "^terragrunt_darwin_arm64$"
   #
   # ── Pass 3 (windows) ───────────────────────────────────────────────────────
-  # windows/amd64:
-  #   - "^terragrunt_windows_amd64\\.exe$"
+  # No `name: terragrunt.exe` override is needed, and that is MEASURED rather
+  # than assumed: `asset_type: binary` preserves an upstream `.exe` suffix but
+  # never synthesises one, so it had to be checked. A windows-only temp spec
+  # run through `pipeline prepare` produced
+  #   $ tar tvf …/windows_amd64/bundle.tar.xz
+  #   -rwxr-xr-x 0/0  91064936  terragrunt.exe
+  # — the suffix survives `name: terragrunt`, and the bare `terragrunt` in
+  # metadata.json's `binaries` still earns it mode 0755. No runner was needed
+  # to establish either.
+  windows/amd64:
+    - "^terragrunt_windows_amd64\\.exe$"
 
 asset_type:
   # Raw binary on every platform — there is no archive to strip, so the file
