@@ -1,0 +1,192 @@
+# ⚠ `extends:` is a SHALLOW merge of TOP-LEVEL KEYS. Setting a key here
+# REPLACES the base's block outright — there is no per-key merge. `platforms:`
+# is deliberately NOT restated below: it carries the container legs that make
+# this spec's bare Linux keys honest, and restating it to tweak one runner
+# would drop them all without reddening anything. This repo is single-package,
+# so the measured matrix lives in the base and nothing here touches it.
+extends: ../mirror-base.yml
+
+name: terragrunt
+
+# Logical index package `gruntwork-io/terragrunt` at the physical path
+# `ghcr.io/ocx-contrib/gruntwork-io/terragrunt` — slash segments, never
+# hyphen-flattened. Two segments always. `gruntwork-io` is the org handle of
+# Gruntwork, LLC, which authors and publishes terragrunt alongside terratest,
+# cloud-nuke, git-xargs and boilerplate — skill Phase 1 rule 1, a namespace
+# that plausibly holds more than one package. The first segment must be this
+# repo's own GitHub owner: GITHUB_TOKEN only authorises packages owned by the
+# repo the workflow runs in.
+target:
+  registry: ghcr.io
+  repository: ocx-contrib/gruntwork-io/terragrunt
+
+source:
+  type: github_release
+  owner: gruntwork-io
+  repo: terragrunt
+  # Tags carry a "v" prefix (`v1.1.2`); the captured version does not. The
+  # strict `^v\d+\.\d+\.\d+$` is doing real filtering work here — the release
+  # listing also carries `v1.1.0-rc1..rc3`, `v1.0.0-rc1..rc3`,
+  # `v0.99.0-rc2026012301` and a parallel `alpha-YYYYMMDDNN` train (one of
+  # which, `alpha-2026030301`, has ZERO assets and would be a silent hole if
+  # it ever matched). None of them can match this pattern, and
+  # `skip_prereleases: true` in ../mirror-base.yml is a second, independent
+  # guard on the same set.
+  tag_pattern: "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"
+
+# ─── libc gate (Phase 3.5) — the evidence, not the conclusion ───────────────
+#
+# `os.features` states what an artifact REQUIRES OF THE HOST. terragrunt is
+# pure Go with no cgo, so upstream ships one Linux binary per arch with no
+# musl/gnu split. Measured on ALL FOUR declared Linux artifacts at BOTH ends of
+# the mirrored range (2 arches × v1.1.0 and v1.1.2), not just the newest:
+#
+#   $ file terragrunt_linux_amd64
+#   ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked,
+#   Go BuildID=…, stripped
+#   $ file terragrunt_linux_arm64
+#   ELF 64-bit LSB executable, ARM aarch64, version 1 (SYSV), statically
+#   linked, Go BuildID=…, stripped
+#   $ readelf -l terragrunt_linux_{amd64,arm64} | grep -c INTERP → 0 (all four)
+#   $ readelf -d terragrunt_linux_{amd64,arm64} | grep -c NEEDED → 0 (all four)
+#
+#     ⇒ requires NOTHING of the host → BARE `linux/amd64` and `linux/arm64`.
+#       The alpine container leg in ../mirror-base.yml is what turns that
+#       universality claim into evidence.
+#
+# The static reading was CHECKED FOR A UPX STUB before being believed — a
+# packed binary shows no PT_INTERP/PT_DYNAMIC either, so `file` calls a
+# glibc-dynamic build "statically linked" and the gate silently produces a
+# false universality claim:
+#
+#   $ strings -a terragrunt_linux_amd64 | grep -c '^UPX'   → 0
+#   $ readelf -h … | grep 'Start of section headers'       → 400 (not 0)
+#
+#     ⇒ not packed; the section table is intact and the static reading stands.
+#
+#   $ stat -c '%a' terragrunt_linux_{amd64,arm64}          → 644 (every asset)
+#       GitHub serves raw binaries WITHOUT the exec bit. `prepare` chmods 0755
+#       exactly the names metadata.json declares, which is why the hand-listed
+#       `binaries` claim there is load-bearing rather than documentation.
+#
+# ─── Asset format: THREE forms of one build, and the archives buy nothing ───
+#
+# Every platform ships the SAME build three times: a raw uncompressed binary,
+# a `.tar.gz` and a `.zip`. The archives are not a different layout — they do
+# NOT rename the file to a short `terragrunt`, and they do not add a wrapper
+# directory, a LICENSE or anything else:
+#
+#   $ tar tvzf terragrunt_linux_amd64.tar.gz
+#   -rw-r--r-- runner/runner 88907938 …  terragrunt_linux_amd64
+#
+# A single member, still carrying the platform-suffixed name, and still mode
+# 0644. So an archive would buy exactly nothing over the raw asset while
+# costing a decompression layer — every pattern below takes the RAW file and
+# `asset_type` renames it once, centrally.
+#
+# ─── END-ANCHORS ARE LOAD-BEARING, NOT DECORATION ──────────────────────────
+#
+# `terragrunt_linux_amd64` is a strict PREFIX of BOTH
+# `terragrunt_linux_amd64.tar.gz` AND `terragrunt_linux_amd64.zip`, so an
+# unanchored pattern matches THREE assets — an ambiguous match, which is a hard
+# error rather than a silent skip. The `$` is what makes each pattern resolve
+# to exactly one file. Same on windows: `\\.exe$` excludes `.exe.tar.gz` and
+# `.exe.zip`.
+#
+# ─── Scope + resolution (verified on EVERY in-range release) ────────────────
+#
+# The mirrored range is exactly v1.1.0, v1.1.1, v1.1.2 — three releases. Each
+# of the five patterns below was matched against each release's FULL 27-asset
+# list: EXACTLY ONE match, every time, both ways, with 22 assets left unmatched
+# on each (the .tar.gz/.zip twins, the two 386 builds, SHA256SUMS and its four
+# signature sidecars, and the signing key). A pattern matching zero is silently
+# skipped rather than an error, which would yield a green run with a missing
+# platform. No in-range release is asset-less.
+#
+# Asset names carry NO version token at all — `terragrunt_linux_amd64` is
+# byte-identical as a NAME across all three releases — so the usual "upstream
+# shipped the previous version's binaries under a new tag" check cannot be made
+# from the filename. It is made from the binary instead: the smoke test asserts
+# a version SHAPE, and each downloaded artifact was run locally
+# (`terragrunt --version` → `terragrunt version v1.1.0` on the v1.1.0 asset,
+# `v1.1.2` on the v1.1.2 asset), so the content does track the tag.
+#
+# Upstream also publishes, and this mirror deliberately does not carry:
+#   terragrunt_linux_386, terragrunt_windows_386.exe  — ocx's Architecture enum
+#                          is amd64 + arm64 only, so 386 is not expressible
+#   *.tar.gz / *.zip     — the no-op archive twins above
+#   SHA256SUMS{,.gpgsig,.pem,.sig,.sigstore.json},
+#   terragrunt-signing-key.asc                        — checksum + signature
+#                          sidecars (`verify.github_asset_digest` in the base
+#                          covers integrity from the GitHub API digest instead)
+#
+# windows/arm64 IS expressible in ocx and is NOT shipped by upstream: no
+# in-range release contains any `terragrunt_windows_arm64*` asset (checked on
+# all three; the only windows targets are amd64 and 386). Declaring it would
+# boot a windows-11-arm runner that self-skips per version and reports SUCCESS
+# having tested nothing, so it is omitted deliberately rather than overlooked.
+assets:
+  linux/amd64:
+    - "^terragrunt_linux_amd64$"
+  linux/arm64:
+    - "^terragrunt_linux_arm64$"
+  # ── Pass 2 (darwin) ────────────────────────────────────────────────────────
+  # Uncommented together with the matching `platforms:` keys in
+  # ../mirror-base.yml, never on their own.
+  # darwin/amd64:
+  #   - "^terragrunt_darwin_amd64$"
+  # darwin/arm64:
+  #   - "^terragrunt_darwin_arm64$"
+  #
+  # ── Pass 3 (windows) ───────────────────────────────────────────────────────
+  # windows/amd64:
+  #   - "^terragrunt_windows_amd64\\.exe$"
+
+asset_type:
+  # Raw binary on every platform — there is no archive to strip, so the file
+  # lands directly at the content root and PATH is a bare ${installPath}. That
+  # is the one layout where a bare ${installPath} is correct, and it is why
+  # `bin_scan` must stay `off` with `binaries` hand-listed (../mirror-base.yml).
+  #
+  # `name:` is REQUIRED here, not cosmetic: the upstream asset is called
+  # `terragrunt_linux_amd64`, and without the rename the bundle would put that
+  # platform-suffixed name on PATH — not `terragrunt`. The archives would not
+  # have helped (see above); they carry the same suffixed name.
+  type: binary
+  name: terragrunt
+metadata:
+  default: metadata.json
+
+catalog:
+  logo: logo.svg
+
+versions:
+  # 1.1.0 is the floor. Nothing in the asset naming forces it — the scheme is
+  # uniform far below — so it is a CATALOG-SCOPE choice: the current 1.1.x
+  # train, three releases, rather than backfilling a hundred 0.x tags. Every
+  # release from it up is complete: no in-range release is missing a declared
+  # platform's asset, and an asset-less release inside the range would be
+  # dropped SILENTLY by the pipeline.
+  min: "1.1.0"
+  new_per_run: 5
+  poll_interval: "49 */6 * * *"
+
+tests:
+  # `script:` resolves from the REPOSITORY ROOT — unlike `metadata.default` and
+  # `catalog.logo` above, which resolve against this spec's own directory.
+  - name: smoke
+    script: terragrunt/tests/smoke.star
+
+annotations:
+  # From the Phase 1.5 license gate:
+  #   $ gh api repos/gruntwork-io/terragrunt/license --jq '.license.spdx_id'
+  #   MIT
+  # Re-read from the raw LICENSE.txt blob as well: unmodified MIT text,
+  # Copyright (c) 2016 Gruntwork, LLC, no added clauses.
+  org.opencontainers.image.licenses: "MIT"
+
+announce:
+  # Spelled out, not derived from target.repository — the logical name and the
+  # physical path are related by convention only.
+  package: gruntwork-io/terragrunt
+  fork: ocx-contrib/index
