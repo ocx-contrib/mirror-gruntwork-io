@@ -6,7 +6,7 @@ name: terragrunt
 
 on:
   schedule:
-    - cron: '49 */6 * * *'
+    - cron: '3 5-23/6 * * *'
   workflow_dispatch:
   push:
     branches: [main]
