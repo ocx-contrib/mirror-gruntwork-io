@@ -133,10 +133,10 @@ assets:
   # ── Pass 2 (darwin) ────────────────────────────────────────────────────────
   # Uncommented together with the matching `platforms:` keys in
   # ../mirror-base.yml, never on their own.
-  # darwin/amd64:
-  #   - "^terragrunt_darwin_amd64$"
-  # darwin/arm64:
-  #   - "^terragrunt_darwin_arm64$"
+  darwin/amd64:
+    - "^terragrunt_darwin_amd64$"
+  darwin/arm64:
+    - "^terragrunt_darwin_arm64$"
   #
   # ── Pass 3 (windows) ───────────────────────────────────────────────────────
   # windows/amd64:
